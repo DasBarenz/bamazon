@@ -1,45 +1,77 @@
 var mysql = require("mysql");
 var inquirer = require("inquirer");
+var cTable = require('console.table');
 
-// create the connection information for the sql database
 var connection = mysql.createConnection({
-  host: "localhost",
-
-  // Your port; if not 3306
-  port: 3306,
-
-  // Your username
-  user: "root",
-
-  // Your password
-  password: "root",
-  database: "bamazonDB"
+    host: "localhost",
+    port: 3306,
+    user: "root",
+    password: "root",
+    database: "bamazonDB"
 });
 
-//THIS CODE IS NOT WORKED OUT....placeholder to modify
-connection.connect(function(err) {
+connection.connect(function (err) {
     if (err) throw err;
-    // console.log(connection);
-    console.log("connected as id " + connection.threadId);
-    // connection.end();
-    // connection.query("SELECT * FROM songs", function (err, res) {
-    //   if (err) throw err;
-    readProducts();
-    //   // console.log(res);
-    //   // connection.end();
-    // })
-  });
+    products();
+});
 
-  function readProducts() {
-    console.log("Selecting all songs...\n");
-    // connection.query("SELECT * FROM songs", function(err, res) {
-    connection.query("SELECT * FROM top_albums", function(err, res) {
-      if (err) throw err;
-      // Log all results of the SELECT statement
-    //   for (i = 0; i < res.length; i++) { 
-    //     console.log(`ID: ${res[i].id}, Song: ${res[i].title}, Artist ${res[i].artist}, Genre: ${res[i].genre}`);
-      console.log(res);
-      });
-      // console.log(res);
-      connection.end();
-    };
+function products() {
+    connection.query('SELECT * FROM products', function (err, res) {
+        if (err) throw err;
+        console.log(`\n- - - - - - - - - - - - - - - - Inventory - - - - - - - - - - - - - - - -\n`);
+        console.table(res);
+        start();
+    });
+}
+
+function start() {
+    connection.query("SELECT * FROM products", function (err, res) {
+        if (err) throw console.log("connection error:" + err);
+        inquirer
+            .prompt([
+                {
+                    name: 'selectId',
+                    type: 'input',
+                    message: 'Enter the ID number of the item you would like to buy.',
+                },
+                {
+                    name: 'amountBought',
+                    type: 'input',
+                    message: 'How many would you like?',
+                }
+            ]).then(function (answers) {
+                var query = "SELECT * FROM products WHERE ?";
+                connection.query(query, {itemID: answers.selectId}, function (err, res) {
+                    var inStock = res[0].stockQuantity;
+                    var numberBought = answers.amountBought;
+
+                    if (inStock >= numberBought) {
+                        var leftInStock = inStock - numberBought;
+                        var totalPrice = res[0].price * numberBought;
+                        var itemPurchased = res[0].productName;
+                        console.log(`Total: $${totalPrice}`);
+                        connection.query("UPDATE products SET ? WHERE ?", [
+                                { stockQuantity: leftInStock },
+                                { itemID: answers.selectId }
+                            ],
+                            function (error) {
+                                if (error) throw err;
+                                console.log(`\n- - - - - - - - - - - - - - Purchase Details - - - - - - - - - - - - - -\n`)
+                                console.table([
+                                    {
+                                      Item: itemPurchased,
+                                      Quantity: numberBought,
+                                      Total: `$${totalPrice}`
+                                    }
+                                  ]);
+                                products();
+                            }
+                        );
+                    } else {
+                        console.log(`\nWe are sorry, we only have ${res[0].stockQuantity} ${res[0].productName}/s left in stock\n`);
+                        products();
+                    }
+                });
+            });
+    });
+}
